@@ -79,7 +79,7 @@ const USER_CONFIG = {
     sessionId: ''
 };
 
-const REPO_URL = 'https://github.com/pasquawisdom2007-beep/SUKUNA-XMD.git';
+const REPO_URL = 'https://github.com/paschalmike2024/SUKUNA-XMD.git';
 const PROJECT_DIR = path.join(process.cwd(), 'SUKUNA-XMD');
 const ENTRY_FILE = 'main.js';
 
