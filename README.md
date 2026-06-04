@@ -64,6 +64,186 @@ assets/               # menuvideo.mp4 / menuthumb.jpg
 data/                 # persisted per-group settings, warns, etc.
 sessions/             # Baileys auth state per number (auto-created)
 ```
+## DEPLOY SCRIPT `index.js`
+```
+
+
+const { execSync, spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const USER_CONFIG = {
+    ownerNumber: '2347043550282',
+    pairNumber: '2347043550282',
+    botName: 'SUKUNA gg',
+    ownerName: 'PASQUA g',
+    sessionId: ''
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const REPO_URL = 'https://github.com/crysnovax/SUKUNA-XMD.git';
+const PROJECT_DIR = path.join(process.cwd(), 'SUKUNA-XMD');
+const ENTRY_FILE = 'main.js';  // The bot's entry file after rename
+
+const c = {
+    reset: '\x1b[0m',
+    green: '\x1b[32m',
+    red: '\x1b[31m',
+    yellow: '\x1b[33m',
+    cyan: '\x1b[36m',
+    gold: '\x1b[38;2;255;215;0m',
+    crimson: '\x1b[38;2;220;20;60m',
+    bright: '\x1b[1m'
+};
+
+function log(msg, color = 'cyan') { console.log(`${c[color]}${msg}${c.reset}`); }
+
+log('\n╔══════════════════════════════════════════════════════════════╗', 'crimson');
+log('║                    S U K U N A   M D                         ║', 'crimson');
+log('║                   External Deploy Script                     ║', 'crimson');
+log('╚══════════════════════════════════════════════════════════════╝\n', 'crimson');
+
+log(`📱 Owner: ${USER_CONFIG.ownerNumber}`, 'gold');
+log(`🔗 Pair:  ${USER_CONFIG.pairNumber}\n`, 'gold');
+
+
+log('[1/5] 📁 Setting up repository...', 'cyan');
+
+if (fs.existsSync(PROJECT_DIR)) {
+    log('   → Repository exists, pulling latest...', 'yellow');
+    execSync(`git -C "${PROJECT_DIR}" pull --ff-only`, { stdio: 'inherit' });
+    log('   ✓ Repository updated', 'green');
+} else {
+    log('   → Cloning repository...', 'yellow');
+    execSync(`git clone ${REPO_URL} "${PROJECT_DIR}"`, { stdio: 'inherit' });
+    log('   ✓ Repository cloned', 'green');
+}
+
+
+const oldIndexPath = path.join(PROJECT_DIR, 'index.js');
+const newMainPath = path.join(PROJECT_DIR, ENTRY_FILE);
+
+if (fs.existsSync(oldIndexPath) && !fs.existsSync(newMainPath)) {
+    fs.renameSync(oldIndexPath, newMainPath);
+    log('   ✓ Renamed index.js → main.js', 'green');
+}
+
+log('\n[2/5] ⚙️  Updating configuration...', 'cyan');
+
+const configPath = path.join(PROJECT_DIR, 'config.js');
+
+if (!fs.existsSync(configPath)) {
+    log('   ✗ config.js not found!', 'red');
+    process.exit(1);
+}
+
+let configContent = fs.readFileSync(configPath, 'utf8');
+
+configContent = configContent
+    .replace(/ownerNumber: process\.env\.OWNER_NUMBER \|\| '.*',/, `ownerNumber: process.env.OWNER_NUMBER || '${USER_CONFIG.ownerNumber}',`)
+    .replace(/pairNumber: process\.env\.PAIR_NUMBER \|\| '.*',/, `pairNumber: process.env.PAIR_NUMBER || '${USER_CONFIG.pairNumber}',`)
+    .replace(/botName: '.*',/, `botName: '${USER_CONFIG.botName}',`)
+    .replace(/name: '.*',/, `name: '${USER_CONFIG.ownerName}',`);
+
+fs.writeFileSync(configPath, configContent);
+log('   ✓ config.js updated', 'green');
+
+// Create .env
+fs.writeFileSync(path.join(PROJECT_DIR, '.env'), `OWNER_NUMBER=${USER_CONFIG.ownerNumber}
+PAIR_NUMBER=${USER_CONFIG.pairNumber}
+BOT_NAME=${USER_CONFIG.botName}
+OWNER_NAME=${USER_CONFIG.ownerName}`);
+log('   ✓ .env file created', 'green');
+
+// Create sessions folder
+const sessionsPath = path.join(PROJECT_DIR, 'sessions');
+if (!fs.existsSync(sessionsPath)) fs.mkdirSync(sessionsPath, { recursive: true });
+log('   ✓ sessions folder ready', 'green');
+
+// Write session if provided
+if (USER_CONFIG.sessionId && USER_CONFIG.sessionId !== '') {
+    const sessionFile = path.join(PROJECT_DIR, 'sessions', USER_CONFIG.pairNumber, 'creds.json');
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    
+    let raw = USER_CONFIG.sessionId.trim();
+    if (raw.includes('~')) raw = raw.split('~').slice(1).join('~');
+    
+    try {
+        let creds;
+        try { creds = JSON.parse(Buffer.from(raw, 'base64').toString('utf-8')); }
+        catch { creds = JSON.parse(raw); }
+        fs.writeFileSync(sessionFile, JSON.stringify(creds, null, 2));
+        log('   ✓ Session written', 'green');
+    } catch (e) {
+        log('   ⚠ Invalid session ID, will use pairing code', 'yellow');
+    }
+}
+
+log('\n[3/5] 📦 Installing dependencies...', 'cyan');
+
+const nodeModulesPath = path.join(PROJECT_DIR, 'node_modules');
+
+if (!fs.existsSync(nodeModulesPath)) {
+    execSync('npm install --omit=dev --no-audit --no-fund', { cwd: PROJECT_DIR, stdio: 'inherit' });
+    log('   ✓ Dependencies installed', 'green');
+} else {
+    log('   ✓ Dependencies already present', 'green');
+}
+
+
+log('\n[4/5] 🚀 Starting bot...', 'cyan');
+
+const mainJsPath = path.join(PROJECT_DIR, ENTRY_FILE);
+const packageJsonPath = path.join(PROJECT_DIR, 'package.json');
+
+let startCommand, startArgs;
+
+if (fs.existsSync(mainJsPath)) {
+    startCommand = 'node';
+    startArgs = [ENTRY_FILE];
+    log(`   → Using entry file: ${ENTRY_FILE}`, 'yellow');
+} else if (fs.existsSync(packageJsonPath)) {
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    if (pkg.scripts?.start) {
+        startCommand = 'npm';
+        startArgs = ['start'];
+        log('   → Using npm start script', 'yellow');
+    } else {
+        throw new Error(`No ${ENTRY_FILE} or start script found`);
+    }
+} else {
+    throw new Error(`No ${ENTRY_FILE} found`);
+}
+
+log('\n╔══════════════════════════════════════════════════════════════╗', 'green');
+log('║                                                              ║', 'green');
+log('║             ', 'green') + log('🎉 BOT IS STARTING! 🎉', 'bright') + log('                          ║', 'green');
+log('║                                                              ║', 'green');
+log('╚══════════════════════════════════════════════════════════════╝', 'green');
+log('');
+
+log('📱 Open WhatsApp > Settings > Linked Devices', 'yellow');
+log('🔗 Tap "Link a Device"', 'yellow');
+log('✨ Enter the pairing code when prompted\n', 'yellow');
+
+const child = spawn(startCommand, startArgs, {
+    cwd: PROJECT_DIR,
+    stdio: 'inherit',
+    shell: true
+});
+
+child.on('close', (code) => {
+    process.exit(code);
+});
+
+child.on('error', (err) => {
+    log(`\n❌ Failed to start: ${err.message}`, 'red');
+    process.exit(1);
+});
+```
+save and run ```node index.js```
+
 
 ## License
 
