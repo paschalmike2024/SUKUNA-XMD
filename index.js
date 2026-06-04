@@ -1,15 +1,22 @@
 
+/**
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║                    S U K U N A   M D                         ║
+ * ║                      Bot Loader                              ║
+ * ║                                                              ║
+ * ╚══════════════════════════════════════════════════════════════╝
+ */
+
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Load configuration from config.js
+// Load configuration
 let config;
 try {
     config = require('./config.js');
 } catch (err) {
     console.error('\x1b[31m[FATAL] config.js not found!\x1b[0m');
-    console.error('Please run the deploy script first.\n');
     process.exit(1);
 }
 
@@ -17,6 +24,29 @@ const BOT_DIR = __dirname;
 
 function log(msg, color = '36') { 
     console.log(`\x1b[${color}m${msg}\x1b[0m`); 
+}
+
+function findMainFile() {
+    // Possible main file names
+    const possibleFiles = ['bot.js', 'main.js', 'app.js', 'core.js', 'run.js'];
+    
+    for (const file of possibleFiles) {
+        const filePath = path.join(BOT_DIR, file);
+        if (fs.existsSync(filePath)) {
+            return file;
+        }
+    }
+    
+    // If no main file found, check if index.js itself has the bot logic
+    const indexPath = path.join(BOT_DIR, 'index.js');
+    const content = fs.readFileSync(indexPath, 'utf8');
+    
+    // If index.js contains makeWASocket or Baileys, it's the main bot file
+    if (content.includes('makeWASocket') || content.includes('@crysnovax/baileys') || content.includes('Baileys')) {
+        return null; // Run index.js itself
+    }
+    
+    return null;
 }
 
 function writeSession() {
@@ -57,24 +87,46 @@ function startBot() {
     log('🔗 Tap "Link a Device"', '33');
     log('✨ Enter the pairing code when prompted\n', '33');
     
-    const child = spawn('node', ['bot.js'], {
-        cwd: BOT_DIR,
-        stdio: 'inherit',
-        env: {
-            ...process.env,
-            OWNER_NUMBER: config.ownerNumber,
-            PAIR_NUMBER: config.pairNumber,
-            BOT_PREFIX: config.prefix,
-            BOT_MODE: config.mode,
-            BOT_NAME: config.botName
-        }
-    });
+    const mainFile = findMainFile();
+    let botProcess;
     
-    child.on('exit', (code) => {
+    if (mainFile === null) {
+        // Run current index.js as the bot
+        log('📁 Starting bot from index.js', '36');
+        botProcess = spawn('node', ['index.js'], {
+            cwd: BOT_DIR,
+            stdio: 'inherit',
+            env: {
+                ...process.env,
+                OWNER_NUMBER: config.ownerNumber,
+                PAIR_NUMBER: config.pairNumber,
+                BOT_PREFIX: config.prefix,
+                BOT_MODE: config.mode,
+                BOT_NAME: config.botName
+            }
+        });
+    } else {
+        // Run the found main file
+        log(`📁 Starting bot from ${mainFile}`, '36');
+        botProcess = spawn('node', [mainFile], {
+            cwd: BOT_DIR,
+            stdio: 'inherit',
+            env: {
+                ...process.env,
+                OWNER_NUMBER: config.ownerNumber,
+                PAIR_NUMBER: config.pairNumber,
+                BOT_PREFIX: config.prefix,
+                BOT_MODE: config.mode,
+                BOT_NAME: config.botName
+            }
+        });
+    }
+    
+    botProcess.on('exit', (code) => {
         process.exit(code ?? 0);
     });
     
-    child.on('error', (err) => {
+    botProcess.on('error', (err) => {
         log(`\n✗ Failed to start: ${err.message}`, '31');
         process.exit(1);
     });
